@@ -1,4 +1,4 @@
-# Trash Panda RoboCop
+# Trash Panda Cop
 RaspberryPi based project to detect and deter raccoon, aka Trash Panda, visits to my backyard!
 
 ## Step 1: Detection
