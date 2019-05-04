@@ -3,14 +3,15 @@ Raccoon Recognizer module (Azure-based)
 """
 
 import cv2
-import numpy as np
-import tempfile
-import time
+import os
+# import numpy as np
+# import tempfile
+# import time
 from azure.cognitiveservices.vision.computervision import ComputerVisionClient
 from azure.cognitiveservices.vision.computervision.models import VisualFeatureTypes
 from msrest.authentication import CognitiveServicesCredentials
 
-_KEY = '034d1f5778624292ad1070373ac71d2a'
+_KEY = os.getenv("AZURE_API_KEY") 
 _TEMP_FILENAME = "capture.jpg"
 
 credentials = CognitiveServicesCredentials(_KEY)       
