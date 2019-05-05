@@ -2,6 +2,7 @@ import cv2
 import imutils
 import datetime
 import time
+import platform
 import azure_raccoon_recognizer  # as raccoon_recognizer
 from videostream.videostream import VideoStream
 
@@ -9,7 +10,7 @@ _DEBUG = False  # Toggle for debug output statements
 _CONTOUR_TOLERANCE = 8000
 _MOTION_ELAPSED_TIME_TOLERANCE = 3.0
 _CAPTURE_FPS = 10
-_SHOW_PREVIEW = False
+_SHOW_PREVIEW = True
 
 
 def log(*args):
@@ -38,12 +39,17 @@ def destroyAllWindows():
 def showImage(window, frame):
     ''' Show a frame in a named window '''
     if _SHOW_PREVIEW:
+        debug('Show image on window:', window)
         cv2.imshow(window, frame)
+        cv2.waitKey(1)
 
 
 initializeWindow("preview", "isolation_frame")
 
-vs = VideoStream(usePiCamera=False, resolution=(1024, 768)).start()
+isRaspberry = False
+isRaspberry = platform.uname()[0] == "Linux"
+
+vs = VideoStream(usePiCamera=isRaspberry, resolution=(1024, 768)).start()
 log("Waiting 2 seconds to start up the camera stream...")
 time.sleep(2.0)
 
@@ -86,10 +92,14 @@ while True:
         # in holes, then find contours on thresholded image
         thresh = cv2.threshold(frameDelta, 5, 255, cv2.THRESH_BINARY)[1]
         thresh = cv2.dilate(thresh, None, iterations=2)
-        (cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         contour_bounding_area = [None, None, None, None]  # (X, Y, X', Y')
         isolation_frame = None
+
+        debug("shape: ", frame.shape)
+        showImage("preview", frame)
+
+        (_, cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         # loop over the contours
         for c in cnts:
@@ -125,8 +135,7 @@ while True:
             debug("isolation_frame shape: ", isolation_frame.shape)
             # cv2.imshow("isolation_frame", isolation_frame)
 
-        debug("shape: ", frame.shape)
-        showImage("preview", frame)
+
         # cv2.imshow("preview", frame)
 
         # check to see if the room is occupied
