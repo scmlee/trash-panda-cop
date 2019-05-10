@@ -3,24 +3,17 @@ import imutils
 import datetime
 import time
 import platform
+import config
+from logzero import logger, setup_logger, logging
+from pathlib import Path
 import azure_raccoon_recognizer  # as raccoon_recognizer
 from videostream.videostream import VideoStream
 
-_DEBUG = False  # Toggle for debug output statements
 _CONTOUR_TOLERANCE = 8000
 _MOTION_ELAPSED_TIME_TOLERANCE = 3.0
 _CAPTURE_FPS = 10
 _SHOW_PREVIEW = True
-
-
-def log(*args):
-    ''' Log output '''
-    print(*args)
-
-def debug(*args):
-    ''' Debug output; based on global _debug flag '''
-    if _DEBUG:
-        print(*args)
+_RESULTS_PATH = Path("results")
 
 
 def initializeWindow(*windows):
@@ -39,18 +32,21 @@ def destroyAllWindows():
 def showImage(window, frame):
     ''' Show a frame in a named window '''
     if _SHOW_PREVIEW:
-        debug('Show image on window:', window)
+        logger.debug('Show image on window: %s' % window)
         cv2.imshow(window, frame)
         cv2.waitKey(1)
+        
 
+logger = config.getLogger()
 
-initializeWindow("preview", "isolation_frame")
+logger.info("Hello! Getting ready to spot some trash pandas!")
 
-isRaspberry = False
 isRaspberry = platform.uname()[0] == "Linux"
+logger.info("Platform detection.. Raspberry Pi? %s" % isRaspberry)
 
+logger.info("Starting video feed...")
 vs = VideoStream(usePiCamera=isRaspberry, resolution=(1024, 768)).start()
-log("Waiting 2 seconds to start up the camera stream...")
+logger.info("Waiting 2 seconds to start up the camera stream...")
 time.sleep(2.0)
 
 motionCounter = 0
@@ -58,18 +54,18 @@ lastShown = datetime.datetime.now()
 text = ""
 avg = None
 
-# Variables
-azure_region = 'westcentralus' #Here you enter the region of your subscription
-azure_url = 'https://{}.api.cognitive.microsoft.com/vision/v2.0/analyze'.format(azure_region)
-azure_key = '034d1f5778624292ad1070373ac71d2a'
-azure_maxNumRetries = 10
+# Ensure that the results path exists
+_RESULTS_PATH.mkdir(parents=True, exist_ok=True)
 
-log("Starting to watch video stream")
+initializeWindow("preview")
+
+# Variables
+logger.info("Starting to watch video stream")
 while True:
     try:
         time.sleep(_CAPTURE_FPS / 60)
         timestamp = datetime.datetime.now()
-    
+
         frame = vs.read()
         frame = imutils.resize(frame, width=800)
 
@@ -78,7 +74,7 @@ while True:
 
         # if the average frame is None, initialize it
         if avg is None:
-            print("[INFO] Starting background model...")
+            logger.info("Starting background model...")
             avg = gray.copy().astype("float")
             continue
 
@@ -96,8 +92,7 @@ while True:
         contour_bounding_area = [None, None, None, None]  # (X, Y, X', Y')
         isolation_frame = None
 
-        debug("shape: ", frame.shape)
-        showImage("preview", frame)
+        logger.debug("shape: " + str(frame.shape))
 
         (_, cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -110,8 +105,8 @@ while True:
             # compute the bounding box for the contour, draw it on the frame,
             # and update the
             (x, y, w, h) = cv2.boundingRect(c)
-            
-            debug("contour:", x, y, w, h)
+
+            logger.debug("contour: %d %d %d %d" % (x, y, w, h))
 
             if contour_bounding_area[0] is None:
                 contour_bounding_area = [x, x + w, y, y + h]
@@ -126,41 +121,37 @@ while True:
             # Crop the frame to the area where motion occurred
             isolation_frame = frame[contour_bounding_area[2]:contour_bounding_area[3],
                                     contour_bounding_area[0]:contour_bounding_area[1]]
-            
+
             cv2.rectangle(frame, (contour_bounding_area[0], contour_bounding_area[2]),
                     (contour_bounding_area[1], contour_bounding_area[3]),
                     (0, 255, 0), 2)
 
-            debug(contour_bounding_area)
-            debug("isolation_frame shape: ", isolation_frame.shape)
+            logger.debug(contour_bounding_area)
+            logger.debug("isolation_frame shape: " + str(isolation_frame.shape))
             # cv2.imshow("isolation_frame", isolation_frame)
-
-
-        # cv2.imshow("preview", frame)
 
         # check to see if the room is occupied
         if isolation_frame is not None:
             # check to see if enough time has passed between uploads
             if (timestamp - lastShown).seconds >= _MOTION_ELAPSED_TIME_TOLERANCE:
-
-                # Trigger the recognizer
-                azure_raccoon_recognizer.hasRaccoon(isolation_frame)
-
-                showImage("isolation_frame", isolation_frame)
+                showImage("preview", frame)
                 # cv2.imshow("isolation_frame", isolation_frame)
                 lastShown = timestamp
 
-    # Escape to exit
-    # if _SHOW_PREVIEW and cv2.waitKey(20) == 27:
-        # break
-    # else:    
-        # try:
-            # time.sleep(0.1)
+                # Trigger the recognizer
+                isRaccoon = azure_raccoon_recognizer.hasRaccoon(isolation_frame)
+                if isRaccoon is True:
+                    filename = str(_RESULTS_PATH / (timestamp.strftime("%Y-%m-%d_%H%M%S") + ".jpg"))
+                    cv2.imwrite(filename, frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                    logger.info("Raccoon found! Saving image to '", filename, "'")
+            
     except KeyboardInterrupt:
         break
 
-log("Cleaning up...")
+logger.info("Cleaning up...")
 
 # Clean up...
 destroyAllWindows()
 vs.stop()
+
+logger.info("Goodbye!\n")
