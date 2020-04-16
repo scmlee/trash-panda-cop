@@ -6,15 +6,17 @@ import platform
 import config
 from logzero import logger, setup_logger, logging
 from pathlib import Path
-import azure_raccoon_recognizer  # as raccoon_recognizer
-from videostream.videostream import VideoStream
+#import azure_raccoon_recognizer  # as raccoon_recognizer
+from raccoon_recognizer.racoon_recognizer import RacoonRecognizer
+from video_stream.video_stream import VideoStream
 
+# Constants / Parameters
 _CONTOUR_TOLERANCE = 8000
 _MOTION_ELAPSED_TIME_TOLERANCE = 3.0
 _CAPTURE_FPS = 10
 _SHOW_PREVIEW = True
+_DEBUG = True
 _RESULTS_PATH = Path("results")
-
 
 def initializeWindow(*windows):
     ''' Initialize a set of cv2 named windows '''
@@ -41,11 +43,15 @@ logger = config.getLogger()
 
 logger.info("Hello! Getting ready to spot some trash pandas!")
 
+raccoonRecognizer = RacoonRecognizer(type="AZURE")
+
 isRaspberry = platform.uname()[0] == "Linux"
 logger.info("Platform detection.. Raspberry Pi? %s" % isRaspberry)
 
 logger.info("Starting video feed...")
-vs = VideoStream(usePiCamera=isRaspberry, resolution=(1024, 768)).start()
+#vs = VideoStream(usePiCamera=isRaspberry, resolution=(1024, 768)).start()
+
+vs = VideoStream(usePiCamera=False, src="rtsp://Wyze:Camera@192.168.1.135/live", resolution=(1280, 720)).start()
 logger.info("Waiting 2 seconds to start up the camera stream...")
 time.sleep(2.0)
 
@@ -128,7 +134,6 @@ while True:
 
             logger.debug(contour_bounding_area)
             logger.debug("isolation_frame shape: " + str(isolation_frame.shape))
-            # cv2.imshow("isolation_frame", isolation_frame)
 
         # check to see if the room is occupied
         if isolation_frame is not None:
@@ -138,12 +143,17 @@ while True:
                 # cv2.imshow("isolation_frame", isolation_frame)
                 lastShown = timestamp
 
+                if (_DEBUG):                
+                    cv2.imwrite("last_movement.jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+
                 # Trigger the recognizer
-                isRaccoon = azure_raccoon_recognizer.hasRaccoon(isolation_frame)
+                isRaccoon = raccoonRecognizer.hasRaccoon(isolation_frame)
                 if isRaccoon is True:
                     filename = str(_RESULTS_PATH / (timestamp.strftime("%Y-%m-%d_%H%M%S") + ".jpg"))
                     cv2.imwrite(filename, frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
-                    logger.info("Raccoon found! Saving image to '", filename, "'")
+                    logger.info(f"Raccoon found! Saving image to '{filename}'")
+                else:                    
+                    logger.info("False alarm. Something moved but it wasn't a raccoon.")
             
     except KeyboardInterrupt:
         break

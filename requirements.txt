@@ -2,3 +2,5 @@ opencv-python==3.4.4.19
 imutils==0.5.2
 azure-cognitiveservices-vision-computervision==0.3.0
 logzero==1.5.0
+google-cloud-vision
+setuptools==46.1.3
